@@ -1,0 +1,12 @@
+---
+version: "v1.0.8"
+category: "breaking-changes"
+---
+
+#### Inputs are passed via a tfvars file instead of `TF_VAR_*` environment variables
+
+Previously, every entry in the `inputs` attribute was passed to OpenTofu/Terraform as a `TF_VAR_*` environment variable. With many or large inputs this could exceed the operating system's `ARG_MAX` limit and fail with an `E2BIG` ("argument list too long") error ([#4402](https://github.com/gruntwork-io/terragrunt/issues/4402)).
+
+On Unix-like systems, Terragrunt now streams inputs, `json` encoded, through a named pipe (FIFO) that OpenTofu/Terraform auto-loads as `.terragrunt-inputs.auto.tfvars.json`. The values never enter the OpenTofu/Terraform process environment and are never written to disk. On Windows, where POSIX named pipes are unavailable, the previous `TF_VAR_*` behavior is retained.
+
+This changes variable precedence: because inputs are now an auto-loaded `*.auto.tfvars.json` file, they take precedence over a module's own `terraform.tfvars` / `terraform.tfvars.json` (previously, as environment variables, they had the lowest precedence and `terraform.tfvars` would win). A user's own `*.auto.tfvars` files still override Terragrunt inputs, and an explicit `TF_VAR_<name>` you set in your environment is still honored (Terragrunt omits that input from the file it generates). Additionally, `terragrunt exec -- <command>` no longer exposes inputs as environment variables to arbitrary commands; only OpenTofu/Terraform (which reads `*.auto.tfvars.json`) will see them.

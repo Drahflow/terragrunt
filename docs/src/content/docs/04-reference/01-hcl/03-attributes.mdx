@@ -15,14 +15,25 @@ Think of attributes as the values used for Terragrunt configuration, such as the
 ## inputs
 
 The `inputs` attribute is a map that is used to specify the input variables and their values to pass in to OpenTofu/Terraform.
-Each entry of the map is passed to OpenTofu/Terraform using [the environment variable
-mechanism](https://opentofu.org/docs/language/values/variables/#environment-variables). This means that each input
-will be set using the form `TF_VAR_variablename`, with the value in `json` encoded format.
 
-Note that because the values are being passed in with environment variables and `json`, the type information is lost
-when crossing the boundary between Terragrunt and OpenTofu/Terraform. You must specify the proper [type
-constraint](https://opentofu.org/docs/language/values/variables/#type-constraints) on the variable in OpenTofu/Terraform in
-order for OpenTofu/Terraform to process the inputs as the right type.
+On Unix-like systems, Terragrunt passes these inputs by streaming them, `json` encoded, through a [named pipe
+(FIFO)](https://en.wikipedia.org/wiki/Named_pipe) that OpenTofu/Terraform auto-loads as a
+`.terragrunt-inputs.auto.tfvars.json` [variable definitions file](https://opentofu.org/docs/language/values/variables/#variable-definitions-tfvars-files).
+The input values therefore never appear in the environment of the OpenTofu/Terraform process and are never written to
+disk. This avoids the `ARG_MAX` / `E2BIG` ("argument list too long") failures that can occur when many or large inputs
+are passed as environment variables.
+
+On Windows, where POSIX named pipes are unavailable, Terragrunt instead uses [the environment variable
+mechanism](https://opentofu.org/docs/language/values/variables/#environment-variables), setting each input as
+`TF_VAR_variablename` with the value in `json` encoded format. The `ARG_MAX` and off-disk benefits above do not apply on
+Windows.
+
+Either way, an input whose `TF_VAR_<name>` you have already set in your own environment is left untouched, so your
+explicit environment variable keeps precedence.
+
+You should specify the proper [type
+constraint](https://opentofu.org/docs/language/values/variables/#type-constraints) on each variable in OpenTofu/Terraform
+so that it is interpreted as the intended type.
 
 Example:
 
@@ -99,14 +110,15 @@ tofu apply # or terraform apply
 
 ### Variable Precedence
 
-Variables loaded in OpenTofu/Terraform will consequently use the following precedence order (with the highest precedence being lowest on the list):
+Because Terragrunt delivers `inputs` as an auto-loaded `*.auto.tfvars.json` file (see above) rather than as environment variables, variables loaded in OpenTofu/Terraform use the following precedence order (with the highest precedence being lowest on the list):
 
-1. `inputs` set in `terragrunt.hcl` files.
-2. Explicitly set `TF_VAR_` environment variables (these will override the `inputs` set in `terragrunt.hcl` if they conflict).
-3. `terraform.tfvars` files if present.
-4. `terraform.tfvars.json` files if present.
-5. Any `*.auto.tfvars` or `*.auto.tfvars.json` files, processed in lexical order of their filenames.
-6. Any `-var` and `-var-file` options on the command line, in the order they are provided.
+1. Explicitly set `TF_VAR_` environment variables.
+2. `terraform.tfvars` files if present.
+3. `terraform.tfvars.json` files if present.
+4. Any `*.auto.tfvars` or `*.auto.tfvars.json` files, processed in lexical order of their filenames. Terragrunt's `inputs` are loaded here, from `.terragrunt-inputs.auto.tfvars.json`; its leading dot sorts it ahead of typical user-provided files, so your own `*.auto.tfvars` files still override Terragrunt inputs. (On Windows, inputs are set as `TF_VAR_` environment variables and so sit at level 1 instead.)
+5. Any `-var` and `-var-file` options on the command line, in the order they are provided.
+
+This is a change from previous releases: when `inputs` were passed purely as `TF_VAR_` environment variables they had the lowest precedence, so a module's own `terraform.tfvars` would override them. They are now loaded as an auto-tfvars file and therefore take precedence over `terraform.tfvars` / `terraform.tfvars.json`. An explicit `TF_VAR_<name>` you set in your own environment still wins, because Terragrunt omits that input from the file it generates.
 
 ## download_dir
 

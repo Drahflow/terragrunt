@@ -161,7 +161,7 @@ When Terragrunt finds the `terraform` block with a `source` parameter in `live/s
 
 3. Execute the OpenTofu/Terraform command you specified in that temporary folder (assuming you are performing a [run](/getting-started/terminology/#run)).
 
-4. Pass any variables defined in the `inputs = { …​ }` block as environment variables (prefixed with `TF_VAR_`) when running OpenTofu/Terraform. Notice how the `inputs` block in `stage/app/terragrunt.hcl` deploys fewer and smaller instances than prod.
+4. Pass any variables defined in the `inputs = { …​ }` block to OpenTofu/Terraform when running it — on Unix via an auto-loaded `.auto.tfvars.json` file, and on Windows via `TF_VAR_`-prefixed environment variables. Notice how the `inputs` block in `stage/app/terragrunt.hcl` deploys fewer and smaller instances than prod.
 
 Check out the [terragrunt-infrastructure-modules-example](https://github.com/gruntwork-io/terragrunt-infrastructure-modules-example) and [terragrunt-infrastructure-live-example](https://github.com/gruntwork-io/terragrunt-infrastructure-live-example) repos for fully-working sample code that demonstrates our recommended folder structure for successful infrastructure management.
 

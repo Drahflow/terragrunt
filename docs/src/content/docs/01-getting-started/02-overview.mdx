@@ -218,7 +218,7 @@ The `inputs` block is used to indicate what variable values should be passed to 
 
 In this example, Terragrunt is being configured to pass in a bunch of variables to the OpenTofu/Terraform module. These variables are used to configure the VPC module, such as the name of the VPC, the CIDR block, the availability zones, the subnets, and so on.
 
-Under the hood, what happens here is that Terragrunt sets relevant `TF_VAR_` prefixed environment variables, which are automatically detected by OpenTofu/Terraform as values for variables defined in `.tf` files.
+Under the hood, Terragrunt passes these values to OpenTofu/Terraform as an auto-loaded `.auto.tfvars.json` file (on Unix) or `TF_VAR_`-prefixed environment variables (on Windows), which OpenTofu/Terraform automatically detects as values for variables defined in `.tf` files.
 
 #### Further Reading
 
