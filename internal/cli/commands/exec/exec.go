@@ -52,7 +52,7 @@ func Run(
 		// Just set inputs as env vars, skip init
 		updatedOpts.AutoInit = false
 
-		if err := prepare.PrepareInputsAsEnvVars(l, updatedOpts, runCfg); err != nil {
+		if err := prepare.PrepareInputs(l, updatedOpts, runCfg); err != nil {
 			return err
 		}
 	}
@@ -78,6 +78,13 @@ func runTargetCommand(
 	if !cmdOpts.InDownloadDir {
 		dir = opts.RootWorkingDir
 	}
+
+	cleanupInputs, err := run.SetupTerragruntInputs(ctx, l, dir, cfg.Inputs, opts.Env)
+	if err != nil {
+		return err
+	}
+
+	defer cleanupInputs()
 
 	runOpts := configbridge.NewRunOptions(opts)
 

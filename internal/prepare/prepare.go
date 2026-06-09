@@ -7,7 +7,7 @@
 //  1. PrepareConfig - Reads configuration and fetches credentials
 //  2. PrepareSource - Downloads terraform source if specified
 //  3. PrepareGenerate - Generates configuration files (generate blocks and remote_state)
-//  4. PrepareInputsAsEnvVars - Sets inputs as environment variables
+//  4. PrepareInputs - Verifies OpenTofu/Terraform code is present (inputs are streamed at run time)
 //  5. PrepareInit - Runs terraform init if needed
 package prepare
 
@@ -171,21 +171,16 @@ func PrepareGenerate(l log.Logger, opts *options.TerragruntOptions, cfg *runcfg.
 	return run.GenerateConfig(l, configbridge.NewRunOptions(opts), cfg)
 }
 
-// PrepareInputsAsEnvVars sets terragrunt inputs as environment variables.
-// It requires PrepareGenerate to have been called first.
-func PrepareInputsAsEnvVars(l log.Logger, opts *options.TerragruntOptions, cfg *runcfg.RunConfig) error {
-	runOpts := configbridge.NewRunOptions(opts)
-
-	// Check for terraform code
-	if err := run.CheckFolderContainsTerraformCode(runOpts); err != nil {
-		return err
-	}
-
-	return run.SetTerragruntInputsAsEnvVars(l, runOpts, cfg)
+// PrepareInputs verifies the working directory contains OpenTofu/Terraform code.
+// Inputs are no longer set as environment variables here; they are streamed to the
+// child process at run time (see run.SetupTerragruntInputs). It requires
+// PrepareGenerate to have been called first.
+func PrepareInputs(_ log.Logger, opts *options.TerragruntOptions, _ *runcfg.RunConfig) error {
+	return run.CheckFolderContainsTerraformCode(configbridge.NewRunOptions(opts))
 }
 
 // PrepareInit runs terraform init if needed. This is the final preparation stage.
-// It requires PrepareInputsAsEnvVars to have been called first.
+// It requires PrepareInputs to have been called first.
 func PrepareInit(
 	ctx context.Context,
 	l log.Logger,
@@ -200,10 +195,7 @@ func PrepareInit(
 		return err
 	}
 
-	if err := run.SetTerragruntInputsAsEnvVars(l, runOpts, cfg); err != nil {
-		return err
-	}
-
-	// Run terraform init via the non-init command preparation path
+	// Run terraform init via the non-init command preparation path. Inputs are
+	// streamed to the child by runTerragruntWithConfig (see run.SetupTerragruntInputs).
 	return run.PrepareNonInitCommand(ctx, l, configbridge.NewRunOptions(originalOpts), runOpts, cfg, r)
 }

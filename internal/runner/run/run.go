@@ -5,7 +5,6 @@ package run
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"maps"
@@ -15,8 +14,6 @@ import (
 	"slices"
 	"strings"
 	"sync"
-
-	"errors"
 
 	"github.com/gruntwork-io/terragrunt/internal/codegen"
 	"github.com/gruntwork-io/terragrunt/internal/iacargs"
@@ -247,10 +244,6 @@ func runTerragruntWithConfig(
 		maps.Copy(opts.Env, filterTerraformEnvVarsFromExtraArgsRunCfg(opts, cfg))
 	}
 
-	if err := SetTerragruntInputsAsEnvVars(l, opts, cfg); err != nil {
-		return err
-	}
-
 	if opts.TerraformCliArgs.First() == tf.CommandNameInit {
 		if err := prepareInitCommandRunCfg(ctx, l, opts, cfg); err != nil {
 			return err
@@ -261,19 +254,16 @@ func runTerragruntWithConfig(
 		}
 	}
 
-	// Write null-valued inputs to a tfvars.json file that OpenTofu/Terraform will auto-load.
-	nullVarsFile, err := setTerragruntNullValuesRunCfg(opts, cfg)
+	// Make Terragrunt inputs available to OpenTofu/Terraform without putting their
+	// values in the environment (avoids ARG_MAX/E2BIG) or on disk. On Unix this
+	// streams them through a FIFO auto-loaded as *.auto.tfvars.json; on Windows it
+	// falls back to TF_VAR_* env vars. See inputs_tfvars.go / inputs_tfvars_windows.go.
+	cleanupInputs, err := SetupTerragruntInputs(ctx, l, opts.WorkingDir, cfg.Inputs, opts.Env)
 	if err != nil {
 		return err
 	}
 
-	defer func() {
-		if nullVarsFile != "" {
-			if removeErr := os.Remove(nullVarsFile); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
-				l.Debugf("Failed to remove null values file %s: %v", nullVarsFile, removeErr)
-			}
-		}
-	}()
+	defer cleanupInputs()
 
 	// Now that we've run 'init' and have all the source code locally, we can finally run the patch command
 	if err := checkProtectedModuleRunCfg(opts, cfg); err != nil {
@@ -390,28 +380,6 @@ func RunActionWithHooks(
 	}
 
 	return multierror.Join(allErrors...)
-}
-
-// SetTerragruntInputsAsEnvVars sets the inputs from Terragrunt configurations to TF_VAR_* environment variables for
-// OpenTofu/Terraform.
-func SetTerragruntInputsAsEnvVars(l log.Logger, opts *Options, cfg *runcfg.RunConfig) error {
-	asEnvVars, err := ToTerraformEnvVars(l, cfg.Inputs)
-	if err != nil {
-		return err
-	}
-
-	if opts.Env == nil {
-		opts.Env = map[string]string{}
-	}
-
-	for key, value := range asEnvVars {
-		// Don't override any env vars the user has already set
-		if _, envVarAlreadySet := opts.Env[key]; !envVarAlreadySet {
-			opts.Env[key] = value
-		}
-	}
-
-	return nil
 }
 
 // CheckFolderContainsTerraformCode checks if the folder contains Terraform/OpenTofu code
@@ -758,37 +726,4 @@ func checkProtectedModuleRunCfg(opts *Options, cfg *runcfg.RunConfig) error {
 	}
 
 	return nil
-}
-
-// setTerragruntNullValuesRunCfg writes null-valued inputs to a tfvars.json file
-// that OpenTofu/Terraform will auto-load. This is necessary because OpenTofu/Terraform
-// cannot accept null values via environment variables (TF_VAR_*), but it can read them
-// from .auto.tfvars.json files.
-func setTerragruntNullValuesRunCfg(opts *Options, cfg *runcfg.RunConfig) (string, error) {
-	jsonEmptyVars := make(map[string]any)
-
-	for varName, varValue := range cfg.Inputs {
-		if varValue == nil {
-			jsonEmptyVars[varName] = nil
-		}
-	}
-
-	if len(jsonEmptyVars) == 0 {
-		return "", nil
-	}
-
-	jsonContents, err := json.MarshalIndent(jsonEmptyVars, "", "  ")
-	if err != nil {
-		return "", err
-	}
-
-	varFile := filepath.Join(opts.WorkingDir, NullTFVarsFile)
-
-	const ownerReadWritePermissions = 0600
-
-	if err := os.WriteFile(varFile, jsonContents, os.FileMode(ownerReadWritePermissions)); err != nil {
-		return "", err
-	}
-
-	return varFile, nil
 }
