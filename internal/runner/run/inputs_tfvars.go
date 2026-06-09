@@ -73,6 +73,7 @@ func SetupTerragruntInputs(ctx context.Context, l log.Logger, dir string, inputs
 
 	go func() {
 		defer wg.Done()
+
 		serveInputsFIFO(ctx, stop, l, path, data)
 	}()
 
