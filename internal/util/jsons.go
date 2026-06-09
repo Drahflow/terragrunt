@@ -135,3 +135,13 @@ func escapeInterpolationPatternsInValue(value any, depth int) (any, error) {
 func EscapeInterpolationInString(s string) string {
 	return interpolationEscaper.Replace(s)
 }
+
+// EscapeTerraformInterpolation escapes HCL interpolation patterns (${...}) in every
+// string within the value tree, including a top-level string scalar. Use this for
+// values written to a .tfvars.json file, where OpenTofu/Terraform's HCL-JSON parser
+// treats all string values as templates. (AsTerraformEnvVarJSONValue deliberately
+// does NOT escape scalar strings, because scalar TF_VAR_* env vars are taken
+// literally.) Nil maps/slices are preserved as nil.
+func EscapeTerraformInterpolation(value any) (any, error) {
+	return escapeInterpolationPatternsInValue(value, 0)
+}

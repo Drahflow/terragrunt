@@ -112,3 +112,23 @@ func TestEscapeInterpolationInString(t *testing.T) {
 		})
 	}
 }
+
+func TestEscapeTerraformInterpolation(t *testing.T) {
+	t.Parallel()
+
+	// Top-level scalar string IS escaped (unlike AsTerraformEnvVarJSONValue, which
+	// leaves scalar env-var strings raw). This is required for the .tfvars.json path.
+	got, err := util.EscapeTerraformInterpolation("literal ${x} end")
+	require.NoError(t, err)
+	assert.Equal(t, "literal $${x} end", got)
+
+	// Nested strings in maps are escaped; nil is preserved.
+	got, err = util.EscapeTerraformInterpolation(map[string]any{"foo": "a ${b} c", "n": nil})
+	require.NoError(t, err)
+	assert.Equal(t, map[string]any{"foo": "a $${b} c", "n": nil}, got)
+
+	// Non-string scalars pass through unchanged.
+	got, err = util.EscapeTerraformInterpolation(42)
+	require.NoError(t, err)
+	assert.Equal(t, 42, got)
+}
