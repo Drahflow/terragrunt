@@ -1489,6 +1489,46 @@ func TestInputsWithInterpolationPatterns(t *testing.T) {
 	require.True(t, ok, "map_with_interpolation value is not a map")
 	assert.Equal(t, "test ${bar} test", mapValue["foo"])
 	assert.Equal(t, "no interpolation here", mapValue["baz"])
+
+	// A scalar string input containing ${...} must also round-trip literally. Under
+	// the old TF_VAR_* path scalar env vars were taken literally; the FIFO tfvars
+	// path escapes ${...} to preserve the same behavior.
+	strOutput, ok := outputs["string_with_interpolation"]
+	require.True(t, ok, "string_with_interpolation output not found")
+	assert.Equal(t, "literal ${not_a_var} end", strOutput.Value)
+}
+
+// TestInputsLargeValueThroughFIFO exercises a large input value that, passed as a
+// TF_VAR_* environment variable, could contribute to ARG_MAX/E2BIG (#4402). With the
+// FIFO-backed *.auto.tfvars.json path it round-trips regardless of size.
+func TestInputsLargeValueThroughFIFO(t *testing.T) {
+	t.Parallel()
+
+	tmp := t.TempDir()
+
+	large := strings.Repeat("x", 512*1024)
+
+	mainTF := "variable \"big\" { type = string }\noutput \"big_len\" { value = length(var.big) }\n"
+
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, "main.tf"), []byte(mainTF), 0o644))
+
+	tgHCL := "inputs = {\n  big = \"" + large + "\"\n}\n"
+
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, "terragrunt.hcl"), []byte(tgHCL), 0o644))
+
+	helpers.RunTerragrunt(t, "terragrunt apply -auto-approve --non-interactive --working-dir "+tmp)
+
+	stdout := bytes.Buffer{}
+	stderr := bytes.Buffer{}
+
+	err := helpers.RunTerragruntCommand(t, "terragrunt output -no-color -json --non-interactive --working-dir "+tmp, &stdout, &stderr)
+	require.NoError(t, err)
+
+	outputs := map[string]helpers.TerraformOutput{}
+
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &outputs))
+
+	assert.EqualValues(t, len(large), outputs["big_len"].Value)
 }
 
 func TestTerragruntMissingDependenciesFail(t *testing.T) {

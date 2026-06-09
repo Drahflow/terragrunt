@@ -5,3 +5,11 @@ variable "map_with_interpolation" {
 output "map_with_interpolation" {
   value = var.map_with_interpolation
 }
+
+variable "string_with_interpolation" {
+  type = string
+}
+
+output "string_with_interpolation" {
+  value = var.string_with_interpolation
+}
